@@ -1,0 +1,222 @@
+---
+title: "Figure 3"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(ggplot2, DESeq2, dplyr, ggrepel, ggvenn, nichenetr, 
+               openxlsx, pheatmap, reshape2, RColorBrewer, clusterProfiler,
+               enrichplot)
+
+dds <- readRDS("./data/dds.RDS")
+ncounts <- readRDS("./data/ncounts.RDS")
+
+```
+
+# Gene Expression Analysis of dc-hiOL
+
+## Unsupervised analysis
+
+```{r unsupervised_analysis}
+vsd <- vst(dds, blind=TRUE)
+
+sampleDists <- dist(t(assay(vsd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+
+annotation <- data.frame('Age'=dds$Age_Group)
+row.names(annotation) <- colnames(sampleDistMatrix)
+
+anno_cols <- list('Age'=c("young"="#62B2FF",
+                          "adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_dchiOL_expression.jpeg", width = 5, 
+#     height = 4, units = 'in', res = 600, quality = 90)
+pheatmap(sampleDistMatrix,
+         clustering_method = "average",
+         show_colnames = FALSE,
+         show_rownames = FALSE,
+         annotation = annotation,
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "distance",
+         color =  colorRampPalette( rev(brewer.pal(9, "Blues")) )(255))
+#dev.off()
+
+```
+
+## Supervised analysis (old vs. adult samples)
+
+```{r supervised}
+resultsNames(dds)
+results <- lfcShrink(dds, coef="Age_Group_old_vs_adult", type="normal")
+summary(results, alpha=0.05)
+
+df <- as.data.frame(results)
+df$significant <- ifelse(df$padj < 0.05, "Significant", NA)
+
+#jpeg("./plots/MA_plot_dchiOL_expression.jpeg", width = 6, 
+#     height = 5, units = 'in', res = 600, quality = 90)
+ggplot(df, aes(baseMean, log2FoldChange, color=significant)) + 
+  geom_point(size=.6, show.legend = FALSE) + 
+  scale_y_continuous(limits=c(-3, 3)) + 
+  scale_x_log10() + 
+  geom_hline(yintercept = 0, colour="tomato1", size=2) + 
+  labs(x="mean of normalized counts", y="log fold change") + 
+  scale_colour_manual(name="q-value", values=("Significant"="firebrick1"), na.value="grey50") + 
+  annotate(geom="text", x=1e+06, y=2.5, hjust=1, 
+           label="572 genes upregulated", color="navyblue", size=6) +
+  annotate(geom="text", x=1e+06, y=-2.5, hjust=1,
+           label="752 genes downregulated", color="navyblue", size=6) +
+  ggtitle("Old vs. adult dc-hiOL") +
+  theme_bw()
+#dev.off()
+```
+
+## Comparison with other data sets
+
+```{r compare}
+dchiol_sig_genes <- rownames(na.omit(df[df$padj < 0.05,]))
+
+# iN (Mertens et al. 2015)
+iN_diff_exp_genes <- read.table("./data/mertens_et_al_iN_diff_expressed_genes_n=202.txt")
+
+# Rat OPCs (Neumann et al. 2019)
+GSE134765 <- readRDS(file="./data/rat_OPC_aged_vs_young_GSE134765.RDS")
+
+venn <- list(dchiol_sig_genes, iN_diff_exp_genes$V1, GSE134765)
+names(venn) <- c("dc-hiOL","iN (Mertens et al. 2015)","Rat OPC (Neumann et al. 2019)")
+
+#jpeg("./plots/Overlap_Mertens_et_al.jpeg", width = 5, height = 3.5, units = 'in', res = 600, quality = 90)
+ggvenn(venn[c(1,2)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
+       fill_color = c("#0073C2FF", "#EFC000FF"))
+#dev.off()
+
+#jpeg("./plots/Overlap_Neumann_et_al.jpeg", width = 5, height = 3.5, units = 'in', res = 600, quality = 90)
+ggvenn(venn[c(1,3)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
+       fill_color = c("#0073C2FF", "#EFC000FF"))
+#dev.off()
+
+# Ximerakis et al. 2019
+ximerakis_olg <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 1)
+ximerakis_olg <- ximerakis_olg[ximerakis_olg$padj<0.05,]
+ximerakis_opc <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 2)
+ximerakis_opc <- ximerakis_opc[ximerakis_opc$padj<0.05,]
+
+ximerakis_olg$hs_gene <- convert_mouse_to_human_symbols(ximerakis_olg$Gene)
+ximerakis_opc$hs_gene <- convert_mouse_to_human_symbols(ximerakis_opc$Gene)
+venn <- list(dchiol_sig_genes, na.omit(ximerakis_olg$hs_gene), 
+             na.omit(ximerakis_opc$hs_gene))
+names(venn) <- c("dc-hiOL","Mouse OLG (Ximerakis et al. 2019)",
+                 "Mouse OPC (Ximerakis et al. 2019)")
+
+#jpeg("./plots/Overlap_Ximerakis_OLG.jpeg", width = 5, height = 3.5, units = 'in', res = 600, quality = 90)
+ggvenn(venn[c(1,2)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
+       fill_color = c("#0073C2FF", "#EFC000FF"))
+#dev.off()
+
+#jpeg("./plots/Overlap_Ximerakis_OPC.jpeg", width = 5, height = 3.5, units = 'in', res = 600, quality = 90)
+ggvenn(venn[c(1,3)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
+       fill_color = c("#0073C2FF", "#EFC000FF"))
+#dev.off()
+```
+
+# GO Enrichment
+
+```{r enrichment}
+all_genes <- as.character(rownames(results))
+
+# Extract significant results
+signif_res <- results[results$padj < 0.05 & !is.na(results$padj), ]
+upregulated <- signif_res[signif_res$log2FoldChange > 0, ]
+downregulated <- signif_res[signif_res$log2FoldChange < 0, ]
+
+upregulated_genes <- as.character(rownames(upregulated))
+downregulated_genes <- as.character(rownames(downregulated))
+
+# Upregulated
+ego <- enrichGO(gene = upregulated_genes,
+                universe = all_genes,
+                keyType = "SYMBOL",
+                OrgDb = 'org.Hs.eg.db',
+                ont = "ALL",
+                pAdjustMethod = "BH",
+                qvalueCutoff = 0.05,
+                readable = TRUE)
+
+results_ego <- as.data.frame(ego)
+write.xlsx(results_ego,"./data/results_ego.xlsx")
+
+#jpeg("./plots/GO_Enrichment.jpeg", width = 6, height = 5, units = 'in', res = 600, quality = 90)
+dotplot(ego, showCategory=10, font.size=10)
+#dev.off()
+
+
+```
+
+## Ribosomal Genes and ER Stress Related Genes
+
+```{r ribo}
+results_ego <- read.xlsx("./data/results_ego.xlsx")
+results_ego <- results_ego[1:10,]
+results_ego$Description
+
+## Extract Ribosomal Terms / Translation
+results_ego$Description[-c(4,5)]
+genes <- unlist(strsplit(results_ego$geneID[-c(4,5)],split = "/"))
+length(genes)
+
+mat <- ncounts[intersect(genes, rownames(results)),]
+mat <- mat[,dds$Age_Group!="young"]
+
+annotation <- data.frame('Age'=dds$Age_Group[dds$Age_Group!="young"])
+row.names(annotation) <- colnames(mat)
+anno_cols <- list('Age'=c("adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_Ribosomal_Genes.jpeg", width = 7, height = 10, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         show_rownames = TRUE,
+         cluster_rows = FALSE, 
+         cellwidth = 40,
+         annotation = annotation, 
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row",
+         main = "Ribosomal Genes")
+#dev.off()
+
+# ER Stress
+results_ego$Description[c(4,5)]
+genes <- unlist(strsplit(results_ego$geneID[c(4,5)],split = "/"))
+length(genes)
+
+mat <- ncounts[intersect(genes, rownames(results)),]
+mat <- mat[,dds$Age_Group!="young"]
+
+annotation <- data.frame('Age'=dds$Age_Group[dds$Age_Group!="young"])
+row.names(annotation) <- colnames(mat)
+anno_cols <- list('Age'=c("adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_ER_Stress_Genes.jpeg", width = 6, height = 6, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         show_rownames = TRUE,
+         cluster_rows = FALSE, 
+         cellwidth = 40,
+         annotation = annotation, 
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row",
+         main = "ER Stress Genes")
+#dev.off()
+
+```
