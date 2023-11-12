@@ -1,0 +1,157 @@
+---
+title: "Figure 2"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(ggplot2, openxlsx, dplyr, ggrepel, 
+               pheatmap, reshape2, RColorBrewer)
+
+results <- readRDS("./data/results.RDS")
+aging_signature <- results$gene[results$padj < 0.05]
+dds <- readRDS("./data/dds.RDS")
+ncounts <- readRDS("./data/ncounts.RDS")
+
+
+```
+
+# Evaluate overlap of Aging-associated dc-hiOL genes with different gene sets.
+
+## Cellular Sencescence Genes
+
+```{r cellular_senescence}
+senescence_genes <- read.table("./data/REACTOME_CELLULAR_SENESCENCE.v2023.1.Hs.grp")
+senescence_genes <- senescence_genes[-1,]
+length(senescence_genes)
+length(intersect(senescence_genes, aging_signature))
+
+mat <- ncounts[intersect(senescence_genes, aging_signature),]
+mat <- rbind(mat, ncounts[c("TP53", "CDKN2A", "LMNB1"),]) # add TP53, CDKN2A and LMNB1
+
+annotation <- data.frame('Age'=dds$Age_Group)
+row.names(annotation) <- colnames(mat)
+
+anno_cols <- list('Age'=c("young"="#62B2FF",
+                          "adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_REACTOME_CELLULAR_SENESCENCE.jpeg", width = 7, 
+#     height = 5, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         show_rownames = TRUE,
+         cluster_cols = FALSE,
+         annotation = annotation,
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row",
+         main = "REACTOME_CELLULAR_SENESCENCE")
+#dev.off()
+
+```
+
+## Mitochondrial Genes
+
+```{r mito_genes}
+mito_genes <- read.xlsx("./data/Human.MitoCarta3.0.xlsx", sheet=2)
+mito_genes <- mito_genes$Symbol
+length(mito_genes)
+length(intersect(mito_genes,aging_signature))
+
+mat <- ncounts[intersect(mito_genes,aging_signature),]
+
+annotation <- data.frame('Age'=dds$Age_Group)
+row.names(annotation) <- colnames(mat)
+
+anno_cols <- list('Age'=c("young"="#62B2FF",
+                          "adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_MitoCarta3.0.jpeg", width = 7, height = 5, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         cluster_cols = FALSE, 
+         show_rownames = FALSE,
+         #fontsize_row = 7,
+         annotation = annotation,
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row",
+         main = "Mitochondrial Genes")
+#dev.off()
+
+```
+
+## SASP Genes
+
+```{r sasp}
+sasp_genes <- read.table("./data/REACTOME_SENESCENCE_ASSOCIATED_SECRETORY_PHENOTYPE_SASP.v2023.1.Hs.grp")
+sasp_genes <- sasp_genes[-1,]
+length(sasp_genes)
+length(intersect(sasp_genes,aging_signature))
+
+mat <- ncounts[intersect(sasp_genes,aging_signature),]
+
+annotation <- data.frame('Age'=dds$Age_Group)
+row.names(annotation) <- colnames(mat)
+
+anno_cols <- list('Age'=c("young"="#62B2FF",
+                          "adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_REACTOME_SENESCENCE_ASSOCIATED_SECRETORY_PHENOTYPE_SASP.jpeg", 
+#     width = 7, height = 5, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         cluster_cols = FALSE, 
+         show_rownames = TRUE,
+         annotation = annotation,
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row", 
+         main = "SENESCENCE_ASSOCIATED_SECRETORY_PHENOTYPE")
+#dev.off()
+
+```
+
+## Inflammation associated genes
+
+```{r inflam}
+inflam_genes <- read.table("./data/GOBP_INFLAMMATORY_RESPONSE.v2023.2.Hs.grp")
+inflam_genes <- inflam_genes[-1,]
+length(inflam_genes)
+length(intersect(inflam_genes,aging_signature))
+
+mat <- ncounts[intersect(inflam_genes,aging_signature),]
+
+annotation <- data.frame('Age'=dds$Age_Group)
+row.names(annotation) <- colnames(mat)
+
+anno_cols <- list('Age'=c("young"="#62B2FF",
+                          "adult"="#C000C0",
+                          "old"="#65AE65"))
+
+#jpeg("./plots/Heatmap_GOBP_INFLAMMATORY_RESPONSE.jpeg", 
+#     width = 7, height = 5, units = 'in', res = 600, quality = 90)
+pheatmap(mat,
+         color = colorRampPalette(c("darkblue","white","yellow"))(255),
+         show_colnames = FALSE,
+         cluster_cols = FALSE, 
+         show_rownames = TRUE,
+         annotation = annotation,
+         annotation_colors = anno_cols,
+         clustering_distance_cols = "euclidean",
+         name = "expression",
+         scale="row", 
+         main = "GOBP_INFLAMMATORY_RESPONSE")
+#dev.off()
+
+```
