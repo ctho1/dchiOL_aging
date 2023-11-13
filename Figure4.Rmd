@@ -1,0 +1,248 @@
+---
+title: "Figure 4"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(minfi, dplyr, tidyr, ggplot2, ggrepel, methylclock, RColorBrewer,
+               ggpubr, limma, IlluminaHumanMethylationEPICanno.ilm10b5.hg38,
+               pheatmap, ggforce, jaffelab, ComplexHeatmap, openxlsx, circlize)
+
+# Load white matter samples
+RGset_white_matter <- readRDS("./data/RGset_white_matter.RDS")
+anno_white_matter <- as.data.frame(colData(RGset_white_matter))
+Mset_white_matter <- preprocessNoob(RGset_white_matter, dyeMethod = "single")
+filter <- readRDS("./data/EPIC_probes_filter.RDS")
+Mset_white_matter <- Mset_white_matter[-which(rownames(Mset_white_matter) %in% names(filter)),]
+betas_white_matter <- getBeta(Mset_white_matter)
+
+# Load dc-hiOL samples
+RGset_dchiOL <- readRDS("./data/RGset_dchiOL.RDS")
+anno_dchiOL <- as.data.frame(colData(RGset_dchiOL))
+Mset_dchiOL <- preprocessNoob(RGset_dchiOL,dyeMethod = "single")
+Mset_dchiOL <- Mset_dchiOL[-which(rownames(Mset_dchiOL) %in% names(filter)),]
+betas_dchiOL <- getBeta(Mset_dchiOL)
+
+```
+
+# Gene Expression Analysis of dc-hiOL
+
+## Unsupervised analysis
+
+```{r unsupervised_analysis}
+# white matter
+sd <- apply(betas_white_matter, 1, sd)
+betas_top <- betas_white_matter[order(sd, decreasing = TRUE)[1:5000],] 
+pca <- prcomp(t(betas_top))
+varExplained <- jaffelab::getPcaVars(pca, digits = 1)
+pca <- pca$x
+pca <- cbind(pca, as.data.frame(colData(RGset_white_matter)))
+cols <- c("#62B2FF","#C000C0","#65AE65")
+#jpeg("./plots/PCA_White_Matter.jpeg",width=5,height=4, units = "in", res = 600, quality = 90)
+ggplot(pca, aes(x = PC1, y = PC2, color = Age_Group))+
+  geom_point(size=3) +
+  scale_color_manual(values = cols) +
+  xlab(paste0("Principal Component 1: ",varExplained[1],"% variance")) +
+  ylab(paste0("Principal Component 2: ",varExplained[2],"% variance")) +
+  theme_bw() +
+  ggtitle("PCA of 5,000 most variable CpGs") +
+  guides(color=guide_legend(title="Age Group"))
+#dev.off()
+
+# dc-hiOL
+sd <- apply(betas_dchiOL, 1, sd)
+betas_top <- betas_dchiOL[order(sd, decreasing = TRUE)[1:5000],] 
+pca <- prcomp(t(betas_top))
+varExplained <- jaffelab::getPcaVars(pca, digits = 1)
+pca <- pca$x
+pca <- cbind(pca, as.data.frame(colData(RGset_dchiOL)))
+cols <- c("#62B2FF","#C000C0","#65AE65")
+#jpeg("./plots/PCA_dchiOL.jpeg",width=5,height=4, units = "in", res = 600, quality = 90)
+ggplot(pca, aes(x = PC1, y = PC2, color = Age))+
+  geom_point(size=3) +
+  scale_color_manual(values = cols) +
+  xlab(paste0("Principal Component 1: ",varExplained[1],"% variance")) +
+  ylab(paste0("Principal Component 2: ",varExplained[2],"% variance")) +
+  theme_bw() +
+  ggtitle("PCA of 5,000 most variable CpGs") +
+  guides(color=guide_legend(title="Age Group"))
+#dev.off()
+
+```
+
+## Age Prediction
+
+```{r age_predict}
+# white matter
+GRset <- ratioConvert(mapToGenome(Mset_white_matter))
+age_prediction_wm <- DNAmAge(GRset, clocks="skinHorvath", age=anno_white_matter$Age, cell.count = FALSE)
+#jpeg("./plots/Methylation_Clock_White_Matter.jpeg",width=3.5,height=3.5, units = "in", res = 600, quality = 90)
+plotCorClocks(age_prediction_wm) + 
+  theme_minimal() + 
+  ylim(0,90) + 
+  ylab("Chronological Age (Years)") + 
+  xlab("Predicted Age (Years)")
+#dev.off()
+
+# dc-hiOL
+GRset <- ratioConvert(mapToGenome(Mset_dchiOL))
+age_prediction_dchiOL <- DNAmAge(GRset, clocks="skinHorvath", age=anno_dchiOL$Age_Years, cell.count = FALSE)
+#jpeg("./plots/Methylation_Clock_dc-hiOL.jpeg",width=3.5,height=3.5, units = "in", res = 600, quality = 90)
+plotCorClocks(age_prediction_dchiOL) + 
+  theme_minimal() + 
+  ylim(0,90) + 
+  ylab("Chronological Age (Years)") + 
+  xlab("Predicted Age (Years)")
+#dev.off()
+
+```
+
+## Epigenetic Erosion
+
+```{r erosion}
+# Calculate intramethylome variance white matter
+m <- getM(Mset_white_matter)
+var <- cbind(anno_white_matter, variance=colVars(m))
+
+#jpeg("./plots/epigentic_erosion_white_matter.jpeg",width=4,height=3.5, units = "in", res = 600, quality = 90)
+ggboxplot(var, x = "Age_Group", y = "variance",alpha=0.7,fill = "Age_Group", 
+          color = "Age_Group", outlier.shape = NA) + 
+  stat_compare_means(method = "anova") + 
+  scale_fill_manual(values=cols) + 
+  scale_color_manual(values=cols) +
+  ylim(0,14) + xlab("") +
+  theme(legend.position = "none")
+#dev.off()
+
+# Calculate intramethylome variance dc-hiOL
+m <- getM(Mset_dchiOL)
+var <- cbind(anno_dchiOL, variance=colVars(m))
+
+#jpeg("./plots/epigentic_erosion_dchiOL.jpeg",width=4,height=3.5, units = "in", res = 600, quality = 90)
+ggboxplot(var, x = "Age", y = "variance", alpha=0.7, fill = "Age",
+          color = "Age", outlier.shape = NA) + 
+  stat_compare_means(method = "anova") + 
+  scale_fill_manual(values=cols) +
+  scale_color_manual(values=cols) +
+  ylim(0,14) + xlab("") +
+  theme(legend.position = "none")
+#dev.off()
+
+# Calculate intermethylome variance white matter
+meth_wm_young <- getM(Mset_white_matter)[,anno_white_matter$Age_Group=="young"]
+meth_wm_adult <- getM(Mset_white_matter)[,anno_white_matter$Age_Group=="adult"]
+meth_wm_old <- getM(Mset_white_matter)[,anno_white_matter$Age_Group=="old"]
+
+var_wm_young  <- apply(meth_wm_young, 1, var)
+var_wm_adult <- apply(meth_wm_adult, 1, var)
+var_wm_old <- apply(meth_wm_old, 1, var)
+
+df <- cbind(young=var_wm_young,adult=var_wm_adult, old=var_wm_old)
+dfm <- melt(df)
+colnames(dfm)[2] <- "Age"
+levels(dfm$Age) <- c("yong","adult","old")
+
+#jpeg("./plots/intermethylome_erosion_wm.jpeg",width=4.5,height=4, units = "in", res = 600, quality = 90)
+ggboxplot(dfm, x = "Age", y = "value",fill = "Age", color="Age", alpha=0.7,outlier.shape = NA) + 
+  stat_compare_means(method = "anova") + ylim(0,1) + ylab("Inter-methylome Variance") +
+  scale_fill_manual(values = cols) +
+  scale_color_manual(values = cols) + xlab("") +
+  theme(legend.position = "none")
+#dev.off()
+
+# Calculate intermethylome variance dc-hiOL
+meth_young <- getM(Mset_dchiOL)[,anno_dchiOL$Age=="young"]
+meth_adult <- getM(Mset_dchiOL)[,anno_dchiOL$Age=="adult"]
+meth_old <- getM(Mset_dchiOL)[,anno_dchiOL$Age=="old"]
+
+var_young  <- apply(meth_young, 1, var)
+var_adult <- apply(meth_adult, 1, var)
+var_old <- apply(meth_old, 1, var)
+
+df <- cbind(young=var_young,adult=var_adult, old=var_old)
+dfm <- melt(df)
+colnames(dfm)[2] <- "Age"
+levels(dfm$Age) <- c("yong","adult","old")
+
+#jpeg("./plots/intermethylome_erosion_dchiOL.jpeg",width=4.5,height=4, units = "in", res = 600, quality = 90)
+ggboxplot(dfm, x = "Age", y = "value",fill = "Age", color="Age", alpha=0.7,outlier.shape = NA) + 
+  stat_compare_means(method = "anova") + ylim(0,1) + ylab("Inter-methylome Variance") +
+  scale_fill_manual(values = cols) +
+  scale_color_manual(values = cols) + xlab("") +
+  theme(legend.position = "none")
+#dev.off()
+
+```
+
+# Aging Signatures
+
+```{r aging_signature}
+# white matter
+m <- getM(Mset_white_matter)
+design <- model.matrix(~Sex + Age,data=anno_white_matter)
+fit <- lmFit(m,design)
+fit <- eBayes(fit)
+summary(decideTests(fit))
+results_white_matter <- topTable(fit,number=Inf,p.value=0.05,coef="Age",adjust.method="BH")
+
+col_fun = colorRamp2(c(0, 1), c("blue","yellow"))
+topcpgs <- rownames(results_white_matter)[results_white_matter$adj.P.Val<0.001]
+length(topcpgs)
+
+ha = HeatmapAnnotation(Age = anno_white_matter$Age_Group,
+                       col = list(Age = c("young" = cols[1],
+                                          "adult" = cols[2],
+                                          "old" = cols[3])),
+                       annotation_legend_param = list(Age = list(title = "Age",
+                                                 at = c("young","adult","old"))))
+mat <- betas_white_matter[topcpgs,]
+column_dend = as.dendrogram(hclust(dist(t(mat))))
+column_dend = dendextend::rotate(column_dend, c(2:3,1))  # define how you rotate the branches
+ht = Heatmap(mat, col = col_fun, name = "Beta",
+             cluster_columns = column_dend,
+             column_dend_height = unit(2,"cm"),
+             clustering_distance_rows = "euclidean",
+             clustering_method_rows = "average",
+             cluster_rows = TRUE, show_row_names = FALSE,
+             show_row_dend = FALSE, show_column_dend = TRUE,
+             cluster_row_slices = FALSE,
+             show_heatmap_legend = TRUE,
+             show_column_names = FALSE,
+             top_annotation = ha,
+             row_title_gp = gpar(col = "#FFFFFF00"), 
+             border = TRUE,
+             use_raster = FALSE)
+#jpeg("./plots/Heatmap_aging_signature_white_matter.jpeg",width=4,height=4.5, units = "in", res = 600, quality = 90)
+draw(ht, row_title = paste0(""), annotation_legend_side = "right", heatmap_legend_side = "left")
+#dev.off()
+
+# dc-hiOL
+ha = HeatmapAnnotation(Age = anno_dchiOL$Age,
+                       col = list(Age = c("young" = cols[1],
+                                          "adult" = cols[2],
+                                          "old" = cols[3])),
+                       annotation_legend_param = list(Age = list(title = "Age",
+                                                 at = c("young","adult","old"))))
+mat <- betas_dchiOL[topcpgs,]
+ht = Heatmap(mat, col = col_fun, name = "Beta",
+             column_dend_height = unit(2,"cm"),
+             clustering_distance_columns = "euclidean",
+             clustering_method_columns = "ward.D2",
+             cluster_rows = TRUE, 
+             show_row_names = FALSE,
+             show_row_dend = FALSE, 
+             show_column_dend = TRUE,
+             cluster_row_slices = FALSE,
+             show_heatmap_legend = TRUE,
+             show_column_names = FALSE,
+             top_annotation = ha,
+             row_title_gp = gpar(col = "#FFFFFF00"), 
+             border = TRUE,
+             use_raster = FALSE)
+#jpeg("./plots/Heatmap_aging_signature_dchiOL.jpeg",width=4,height=4.5, units = "in", res = 600, quality = 90)
+draw(ht, row_title = paste0(""), annotation_legend_side = "right", heatmap_legend_side = "left")
+#dev.off()
+
+```
