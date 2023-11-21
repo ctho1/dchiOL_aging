@@ -6,9 +6,9 @@ date: "`r Sys.Date()`"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load(ggplot2, DESeq2, dplyr, ggrepel, ggvenn, nichenetr, 
-               openxlsx, pheatmap, reshape2, RColorBrewer, clusterProfiler,
-               enrichplot)
+pacman::p_load(ggplot2, DESeq2, dplyr, ggrepel, ggvenn, nichenetr, openxlsx, 
+               pheatmap, reshape2, RColorBrewer, clusterProfiler, enrichplot,
+               ggpubr)
 
 dds <- readRDS("./data/dds.RDS")
 ncounts <- readRDS("./data/ncounts.RDS")
@@ -51,10 +51,10 @@ pheatmap(sampleDistMatrix,
 
 ```{r supervised}
 resultsNames(dds)
-results <- lfcShrink(dds, coef="Age_Group_old_vs_adult", type="normal")
-summary(results, alpha=0.05)
+results_dchiol <- lfcShrink(dds, coef="Age_Group_old_vs_adult", type="normal")
+summary(results_dchiol, alpha=0.05)
 
-df <- as.data.frame(results)
+df <- as.data.frame(results_dchiol)
 df$significant <- ifelse(df$padj < 0.05, "Significant", NA)
 
 #jpeg("./plots/MA_plot_dchiOL_expression.jpeg", width = 6, 
@@ -74,6 +74,54 @@ ggplot(df, aes(baseMean, log2FoldChange, color=significant)) +
   theme_bw()
 #dev.off()
 ```
+
+
+## Compare Aging Signature of Fibroblasts and dchiOL
+
+```{r compare_fibroblasts}
+dds_fibroblasts <- readRDS("./data/dds_fibroblasts.RDS")
+resultsNames(dds_fibroblasts)
+results_fibroblasts <- lfcShrink(dds_fibroblasts, coef="Age_Group_old_vs_adult", type="normal")
+summary(results_fibroblasts, alpha=0.05)
+
+df <- as.data.frame(results_fibroblasts)
+df$significant <- ifelse(df$padj < 0.05, "Significant", NA)
+
+
+p1 <- ggplot(df, aes(baseMean, log2FoldChange, color=significant)) + 
+  geom_point(size=.6, show.legend = FALSE) + 
+  scale_y_continuous(limits=c(-3, 3)) + 
+  scale_x_log10() + 
+  geom_hline(yintercept = 0, colour="tomato1", size=2) + 
+  labs(x="mean of normalized counts", y="log fold change") + 
+  scale_colour_manual(name="q-value", values=("Significant"="firebrick1"), na.value="grey50") + 
+  annotate(geom="text", x=1e+06, y=2.5, hjust=1, 
+           label="350 genes upregulated", color="navyblue", size=6) +
+  annotate(geom="text", x=1e+06, y=-2.5, hjust=1,
+           label="320 genes downregulated", color="navyblue", size=6) +
+  ggtitle("fibroblasts old vs. adult") +
+  theme_bw()
+
+aging_signature_dchiOL <- rownames(results_dchiol[results_dchiol$padj<0.05 & 
+                                                    is.na(results_dchiol$padj)==FALSE,])
+
+aging_signature_fibro <- rownames(results_fibroblasts[results_fibroblasts$padj<0.05 & 
+                                                    is.na(results_fibroblasts$padj)==FALSE,])
+
+
+venn <- list(aging_signature_dchiOL, aging_signature_fibro)
+names(venn) <- c("dchiOL","fibroblasts")
+p2 <- ggvenn(venn[c(1,2)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
+       fill_color = c("#0073C2FF", "#EFC000FF"))
+
+#jpeg("./plots/compare_aging_signatures_fibroblasts.jpeg", width = 10, height = 5, 
+#     units = 'in', res = 600, quality = 90)
+ggarrange(p1, p2, labels = c("A","B"), ncol = 2, nrow = 1)
+#dev.off()
+
+```
+
+
 
 ## Comparison with other data sets
 
