@@ -8,7 +8,7 @@ date: "`r Sys.Date()`"
 knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load(ggplot2, DESeq2, dplyr, ggrepel, ggvenn, nichenetr, openxlsx, 
                pheatmap, reshape2, RColorBrewer, clusterProfiler, enrichplot,
-               ggpubr)
+               ggpubr, ComplexHeatmap)
 
 dds <- readRDS("./data/dds.RDS")
 ncounts <- readRDS("./data/ncounts.RDS")
@@ -126,6 +126,11 @@ ggarrange(p1, p2, labels = c("A","B"), ncol = 2, nrow = 1)
 ## Comparison with other data sets
 
 ```{r compare}
+results_dchiol <- lfcShrink(dds, coef="Age_Group_old_vs_adult", type="normal")
+summary(results_dchiol, alpha=0.05)
+df <- as.data.frame(results_dchiol)
+df$significant <- ifelse(df$padj < 0.05, "Significant", NA)
+
 dchiol_sig_genes <- rownames(na.omit(df[df$padj < 0.05,]))
 
 # iN (Mertens et al. 2015)
@@ -133,6 +138,15 @@ iN_diff_exp_genes <- read.table("./data/mertens_et_al_iN_diff_expressed_genes_n=
 
 # Rat OPCs (Neumann et al. 2019)
 GSE134765 <- readRDS(file="./data/rat_OPC_aged_vs_young_GSE134765.RDS")
+
+# Ximerakis et al. 2019
+ximerakis_olg <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 1)
+ximerakis_olg <- ximerakis_olg[ximerakis_olg$padj<0.05,]
+ximerakis_opc <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 2)
+ximerakis_opc <- ximerakis_opc[ximerakis_opc$padj<0.05,]
+
+ximerakis_olg$hs_gene <- convert_mouse_to_human_symbols(ximerakis_olg$Gene)
+ximerakis_opc$hs_gene <- convert_mouse_to_human_symbols(ximerakis_opc$Gene)
 
 venn <- list(dchiol_sig_genes, iN_diff_exp_genes$V1, GSE134765)
 names(venn) <- c("dc-hiOL","iN (Mertens et al. 2015)","Rat OPC (Neumann et al. 2019)")
@@ -147,14 +161,7 @@ ggvenn(venn[c(1,3)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, t
        fill_color = c("#0073C2FF", "#EFC000FF"))
 #dev.off()
 
-# Ximerakis et al. 2019
-ximerakis_olg <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 1)
-ximerakis_olg <- ximerakis_olg[ximerakis_olg$padj<0.05,]
-ximerakis_opc <- read.xlsx("./data/41593_2019_491_MOESM8_ESM.xlsx", sheet = 2)
-ximerakis_opc <- ximerakis_opc[ximerakis_opc$padj<0.05,]
 
-ximerakis_olg$hs_gene <- convert_mouse_to_human_symbols(ximerakis_olg$Gene)
-ximerakis_opc$hs_gene <- convert_mouse_to_human_symbols(ximerakis_opc$Gene)
 venn <- list(dchiol_sig_genes, na.omit(ximerakis_olg$hs_gene), 
              na.omit(ximerakis_opc$hs_gene))
 names(venn) <- c("dc-hiOL","Mouse OLG (Ximerakis et al. 2019)",
@@ -169,6 +176,26 @@ ggvenn(venn[c(1,2)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, t
 ggvenn(venn[c(1,3)], stroke_alpha = 0.5, stroke_size = 1, set_name_size = 4.5, text_size = 6,
        fill_color = c("#0073C2FF", "#EFC000FF"))
 #dev.off()
+
+# UpSet Plot
+list <- list(dchiol_sig_genes, iN_diff_exp_genes$V1, GSE134765, 
+             na.omit(ximerakis_olg$hs_gene), na.omit(ximerakis_opc$hs_gene))
+names(list) <- c("dchiOL","iN (Mertens et al. 2015)","Rat OPC (Neumann et al. 2019)",
+                 "Mouse OLG (Ximerakis et al. 2019)","Mouse OPC (Ximerakis et al. 2019)")
+tmp <- list_to_matrix(list)
+mat <- make_comb_mat(tmp, mode = "intersect")
+x <- mat[,c("10000","11000","10100","10010","10001")]
+#x <- x[comb_degree(x)==2]
+
+jpeg("./plots/UpSet_plot_overlapping_genes_aging_signature.jpeg", 
+     width = 8, height = 4, units = 'in', res = 600, quality = 90)
+UpSet(x, top_annotation = upset_top_annotation(x, add_numbers = FALSE, annotation_name_rot = 00),
+    right_annotation = upset_right_annotation(x, add_numbers = TRUE),
+    comb_col = "#0a75ad", comb_order = order(comb_size(x), decreasing = TRUE),
+    set_order = c(names(list)), bg_col = c("#F0F0FF", "#dddddd"), bg_pt_col = "#CCCCFF",
+    row_names_gp = gpar(fontsize = 10))
+dev.off()
+
 ```
 
 # GO Enrichment
