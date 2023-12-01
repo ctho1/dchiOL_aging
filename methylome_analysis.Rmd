@@ -1,5 +1,5 @@
 ---
-title: "Figure 4"
+title: "Methylomics Analysis"
 output: html_document
 date: "`r Sys.Date()`"
 ---
